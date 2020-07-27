@@ -1,0 +1,39 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+$LOAD_PATH << File.expand_path('../lib', __dir__)
+require 'bundler/setup'
+require 'optimist'
+
+def parse_args
+  Optimist.options do
+    opt :queue_host, 'Kafka messaging: hostname or IP', :type => :string, :default => ENV['QUEUE_HOST'] || 'localhost'
+    opt :queue_port, 'Kafka messaging: port', :type => :integer, :default => (ENV['QUEUE_PORT'] || 9092).to_i
+
+    opt :topic, 'Topic', :type => :string, :default => ENV['TOPIC']
+    opt :message, 'Message', :type => :string, :default => ENV['MESSAGE']
+  end
+end
+
+def check_args(args)
+  %i[queue_host queue_port topic message].each do |arg|
+    Optimist.die arg, "can't be blank" if args[arg].blank?
+    Optimist.die arg, "can't be zero" if arg.to_s.index('port').present? && args[arg].zero?
+  end
+end
+
+args = parse_args
+check_args(args)
+
+ManageIQ::Messaging::Client.open(
+  :protocol => :Kafka,
+  :host     => args[:queue_host],
+  :port     => args[:queue_port],
+  :encoding => 'json'
+) do |client|
+  client.publish_topic(
+    :service => args[:topic],
+    :event   => args[:message],
+    :payload => "{#{args[:message]}: \"Cronjob Scheduled Event\"}"
+  )
+end
